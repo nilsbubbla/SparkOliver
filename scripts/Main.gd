@@ -48,6 +48,10 @@ const SAFE_OBSTACLE_MIN_GAP := 430.0
 const SAFE_OBSTACLE_MAX_GAP := 690.0
 const POWERUP_MIN_GAP := 720.0
 const POWERUP_OBSTACLE_MIN_GAP := 170.0
+const GAME_VERSION := "1.3.0"
+const GLOBAL_RUN_URL := "https://www.fnirp.com/sparkoliver/api/v1/runs"
+const GLOBAL_SCORE_URL := "https://www.fnirp.com/sparkoliver/api/v1/scores"
+const GLOBAL_HIGH_SCORES_URL := "https://www.fnirp.com/sparkoliver/highscores.json"
 
 enum GameState { MENU, RUNNING, PAUSED, WON, GAME_OVER }
 
@@ -65,6 +69,10 @@ var score := 0
 var score_accumulator := 0.0
 var high_score := 0
 var high_scores: Array[Dictionary] = []
+var global_high_scores: Array[Dictionary] = []
+var global_high_scores_loaded := false
+var high_score_labels: Array[Label] = []
+var high_score_source_label: Label
 var pending_high_score := 0
 var pending_result_status := ""
 var stars := 0
@@ -77,6 +85,12 @@ var current_level_index := 0
 var audio_muted := false
 var music_enabled := true
 var oliver_mode_enabled := false
+var active_run_id := ""
+var active_run_duration_ms := 0.0
+
+var run_request: HTTPRequest
+var score_request: HTTPRequest
+var leaderboard_request: HTTPRequest
 
 var audio_jump: AudioStreamPlayer
 var audio_pickup: AudioStreamPlayer
@@ -89,6 +103,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_load_high_score()
 	_load_level_data()
+	_build_network_requests()
 	_build_music()
 	_show_start_screen()
 
@@ -111,6 +126,8 @@ func _process(delta: float) -> void:
 	if state != GameState.RUNNING:
 		return
 
+	if not oliver_mode_enabled:
+		active_run_duration_ms += delta * 1000.0
 	_update_powerups(delta)
 	_update_magnet()
 	if not oliver_mode_enabled:
@@ -224,6 +241,7 @@ func _start_game() -> void:
 	distance_best = 0
 	current_level_index = 0
 	active_powerups.clear()
+	_begin_global_run()
 	_stop_music(title_music_player)
 	_play_music(game_music_player)
 	_build_audio()
@@ -278,6 +296,7 @@ func _show_options_dialog() -> void:
 func _show_high_scores_dialog() -> void:
 	_clear_menu_dialog()
 	menu_dialog = _make_menu_dialog("TOPPLISTA")
+	high_score_labels.clear()
 	for i in range(HIGH_SCORE_LIMIT):
 		var label := Label.new()
 		label.position = Vector2(58, 84 + i * 27)
@@ -285,12 +304,17 @@ func _show_high_scores_dialog() -> void:
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		label.add_theme_font_size_override("font_size", 22)
 		label.add_theme_color_override("font_color", Color8(255, 239, 186))
-		if i < high_scores.size():
-			var entry: Dictionary = high_scores[i]
-			label.text = str(i + 1) + ". " + str(entry.get("name", "Spelare")) + " - " + str(int(entry.get("score", 0)))
-		else:
-			label.text = str(i + 1) + ". ---"
 		menu_dialog.add_child(label)
+		high_score_labels.append(label)
+	high_score_source_label = Label.new()
+	high_score_source_label.position = Vector2(58, 228)
+	high_score_source_label.size = Vector2(365, 26)
+	high_score_source_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	high_score_source_label.add_theme_font_size_override("font_size", 16)
+	high_score_source_label.add_theme_color_override("font_color", Color8(180, 207, 216))
+	menu_dialog.add_child(high_score_source_label)
+	_render_high_scores()
+	_fetch_global_high_scores()
 
 func _make_menu_dialog(title: String) -> Control:
 	var overlay := Control.new()
@@ -355,6 +379,8 @@ func _clear_menu_dialog() -> void:
 		return
 	var overlay := menu_dialog.get_parent()
 	menu_dialog = null
+	high_score_labels.clear()
+	high_score_source_label = null
 	if overlay != null:
 		overlay.queue_free()
 
@@ -667,7 +693,7 @@ func _update_hud() -> void:
 	if hud == null:
 		return
 	var meters := int(max(0.0, player.global_position.x - 180.0) / 12.0) if player != null else 0
-	hud.update_run(score, meters, active_powerups, high_score)
+	hud.update_run(score, meters, active_powerups, _display_best_score())
 
 func _load_high_score() -> void:
 	high_scores.clear()
@@ -853,7 +879,7 @@ func _random_kind(rng: RandomNumberGenerator, kinds: Array, fallback_count: int)
 
 func _finish_score_run(status_text: String) -> void:
 	pending_result_status = status_text
-	if _score_qualifies_for_high_scores(score):
+	if not oliver_mode_enabled and score > 0:
 		pending_high_score = score
 		_show_name_entry()
 		return
@@ -870,7 +896,8 @@ func _score_qualifies_for_high_scores(value: int) -> bool:
 func _show_name_entry() -> void:
 	if name_entry_layer != null:
 		return
-	hud.show_status("Nytt rekord!", true)
+	var is_local_record := _score_qualifies_for_high_scores(pending_high_score)
+	hud.show_status("Nytt rekord!" if is_local_record else "Spara resultat", true)
 	name_entry_layer = CanvasLayer.new()
 	name_entry_layer.layer = 240
 	add_child(name_entry_layer)
@@ -897,7 +924,7 @@ func _show_name_entry() -> void:
 	root.add_child(panel)
 
 	var title := Label.new()
-	title.text = "Nytt rekord!"
+	title.text = "Nytt rekord!" if is_local_record else "Spara resultat"
 	title.position = Vector2(0, 18)
 	title.size = Vector2(520, 42)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -938,17 +965,138 @@ func _show_name_entry() -> void:
 func _submit_high_score(raw_name: String) -> void:
 	if name_entry_layer == null:
 		return
-	high_scores.append({
-		"name": _sanitize_player_name(raw_name),
-		"score": pending_high_score,
-	})
-	_sort_and_trim_high_scores()
-	high_score = _top_high_score()
-	_save_high_scores()
+	var cleaned_name := _sanitize_player_name(raw_name)
+	if _score_qualifies_for_high_scores(pending_high_score):
+		high_scores.append({
+			"name": cleaned_name,
+			"score": pending_high_score,
+		})
+		_sort_and_trim_high_scores()
+		high_score = _top_high_score()
+		_save_high_scores()
+	_submit_global_score(cleaned_name, pending_high_score)
 	name_entry_layer.queue_free()
 	name_entry_layer = null
 	pending_high_score = 0
 	_return_to_menu_with_high_scores()
+
+func _build_network_requests() -> void:
+	run_request = HTTPRequest.new()
+	run_request.timeout = 8.0
+	run_request.request_completed.connect(_on_run_request_completed)
+	add_child(run_request)
+
+	score_request = HTTPRequest.new()
+	score_request.timeout = 8.0
+	score_request.request_completed.connect(_on_score_request_completed)
+	add_child(score_request)
+
+	leaderboard_request = HTTPRequest.new()
+	leaderboard_request.timeout = 8.0
+	leaderboard_request.request_completed.connect(_on_leaderboard_request_completed)
+	add_child(leaderboard_request)
+
+func _begin_global_run() -> void:
+	active_run_id = ""
+	active_run_duration_ms = 0.0
+	if oliver_mode_enabled or run_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	run_request.request(
+		GLOBAL_RUN_URL,
+		["Content-Type: application/json", "Accept: application/json"],
+		HTTPClient.METHOD_POST,
+		"{}"
+	)
+
+func _on_run_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 201 or oliver_mode_enabled:
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	active_run_id = str((parsed as Dictionary).get("run_id", ""))
+
+func _submit_global_score(player_name: String, submitted_score: int) -> void:
+	if oliver_mode_enabled or active_run_id.is_empty():
+		return
+	if score_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	var payload := JSON.stringify({
+		"run_id": active_run_id,
+		"name": player_name,
+		"score": submitted_score,
+		"duration_ms": int(active_run_duration_ms),
+		"game_version": GAME_VERSION,
+		"oliver_mode": false,
+	})
+	score_request.request(
+		GLOBAL_SCORE_URL,
+		["Content-Type: application/json", "Accept: application/json"],
+		HTTPClient.METHOD_POST,
+		payload
+	)
+	active_run_id = ""
+
+func _on_score_request_completed(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	if result == HTTPRequest.RESULT_SUCCESS and response_code in [200, 201]:
+		_fetch_global_high_scores()
+
+func _fetch_global_high_scores() -> void:
+	if leaderboard_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	if high_score_source_label != null:
+		high_score_source_label.text = "Hämtar global topplista..."
+	var error := leaderboard_request.request(GLOBAL_HIGH_SCORES_URL, ["Accept: application/json"])
+	if error != OK and high_score_source_label != null:
+		high_score_source_label.text = "Lokal topplista"
+
+func _on_leaderboard_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		global_high_scores_loaded = false
+		_render_high_scores()
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		global_high_scores_loaded = false
+		_render_high_scores()
+		return
+	var entries: Variant = (parsed as Dictionary).get("entries", [])
+	if typeof(entries) != TYPE_ARRAY:
+		global_high_scores_loaded = false
+		_render_high_scores()
+		return
+	global_high_scores_loaded = true
+	global_high_scores.clear()
+	for raw_entry in entries:
+		if typeof(raw_entry) != TYPE_DICTIONARY:
+			continue
+		var entry: Dictionary = raw_entry
+		global_high_scores.append({
+			"name": _sanitize_player_name(str(entry.get("name", "Spelare"))),
+			"score": maxi(0, int(entry.get("score", 0))),
+		})
+		if global_high_scores.size() >= HIGH_SCORE_LIMIT:
+			break
+	_render_high_scores()
+	_update_hud()
+
+func _render_high_scores() -> void:
+	if high_score_labels.is_empty():
+		return
+	var entries := global_high_scores if global_high_scores_loaded else high_scores
+	for i in range(HIGH_SCORE_LIMIT):
+		if i < entries.size():
+			var entry: Dictionary = entries[i]
+			high_score_labels[i].text = str(i + 1) + ". " + str(entry.get("name", "Spelare")) + " - " + str(int(entry.get("score", 0)))
+		else:
+			high_score_labels[i].text = str(i + 1) + ". ---"
+	if high_score_source_label != null:
+		high_score_source_label.text = "Global topplista" if global_high_scores_loaded else "Lokal topplista – servern kunde inte nås"
+
+func _display_best_score() -> int:
+	if global_high_scores.is_empty():
+		return high_score
+	return maxi(high_score, int(global_high_scores[0].get("score", 0)))
 
 func _sanitize_player_name(raw_name: String) -> String:
 	var cleaned := raw_name.strip_edges()
