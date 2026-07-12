@@ -76,6 +76,7 @@ var level_background: Texture2D
 var current_level_index := 0
 var audio_muted := false
 var music_enabled := true
+var oliver_mode_enabled := false
 
 var audio_jump: AudioStreamPlayer
 var audio_pickup: AudioStreamPlayer
@@ -112,11 +113,12 @@ func _process(delta: float) -> void:
 
 	_update_powerups(delta)
 	_update_magnet()
-	score_accumulator += delta * 12.0 * float(_score_multiplier())
-	var earned := int(score_accumulator)
-	if earned > 0:
-		score += earned
-		score_accumulator -= float(earned)
+	if not oliver_mode_enabled:
+		score_accumulator += delta * 12.0 * float(_score_multiplier())
+		var earned := int(score_accumulator)
+		if earned > 0:
+			_award_points(earned)
+			score_accumulator -= float(earned)
 	var meters := int(max(0.0, player.global_position.x - 180.0) / 12.0)
 	distance_best = max(distance_best, meters)
 	if player.global_position.x >= level_length:
@@ -266,6 +268,12 @@ func _show_options_dialog() -> void:
 		_sync_music()
 	)
 	menu_dialog.add_child(music_button)
+	var oliver_mode_button := _make_dialog_button(Vector2(70, 216), Vector2(340, 48), _oliver_mode_label())
+	oliver_mode_button.pressed.connect(func() -> void:
+		oliver_mode_enabled = not oliver_mode_enabled
+		oliver_mode_button.text = _oliver_mode_label()
+	)
+	menu_dialog.add_child(oliver_mode_button)
 
 func _show_high_scores_dialog() -> void:
 	_clear_menu_dialog()
@@ -309,9 +317,9 @@ func _make_menu_dialog(title: String) -> Control:
 	panel.anchor_right = 0.5
 	panel.anchor_bottom = 0.5
 	panel.offset_left = -240
-	panel.offset_top = -130
+	panel.offset_top = -165
 	panel.offset_right = 240
-	panel.offset_bottom = 130
+	panel.offset_bottom = 165
 	overlay.add_child(panel)
 
 	var title_label := Label.new()
@@ -338,6 +346,9 @@ func _sound_label() -> String:
 
 func _music_label() -> String:
 	return "MUSIK: PÅ" if music_enabled else "MUSIK: AV"
+
+func _oliver_mode_label() -> String:
+	return "OLIVERLÄGE: PÅ" if oliver_mode_enabled else "OLIVERLÄGE: AV"
 
 func _clear_menu_dialog() -> void:
 	if menu_dialog == null:
@@ -504,11 +515,13 @@ func _make_music_player(stream: AudioStream) -> AudioStreamPlayer:
 func _on_obstacle_hit(obstacle: Area2D) -> void:
 	if state != GameState.RUNNING:
 		return
+	if oliver_mode_enabled:
+		return
 	if player.shield_active:
 		player.set_power_state("shield", false)
 		active_powerups.erase("shield")
 		_refresh_player_power_states()
-		score += 75
+		_award_points(75)
 		obstacle.queue_free()
 		_play_sound(audio_power)
 		_update_hud()
@@ -519,7 +532,7 @@ func _on_obstacle_hit(obstacle: Area2D) -> void:
 
 func _on_star_collected(_star: Area2D) -> void:
 	stars += 1
-	score += 50 * _score_multiplier()
+	_award_points(50 * _score_multiplier())
 	_play_sound(audio_pickup)
 	_update_hud()
 
@@ -534,7 +547,7 @@ func _on_powerup_collected(kind: String, _powerup: Area2D) -> void:
 	active_powerups[kind] = duration
 	player.set_power_state(kind, true)
 	_refresh_player_power_states()
-	score += 100
+	_award_points(100)
 	_play_sound(audio_power)
 	_update_hud()
 
@@ -560,6 +573,11 @@ func _update_magnet() -> void:
 
 func _score_multiplier() -> int:
 	return 2 if active_powerups.has("turbo") else 1
+
+func _award_points(amount: int) -> void:
+	if oliver_mode_enabled:
+		return
+	score += amount
 
 func _play_sound(audio: AudioStreamPlayer) -> void:
 	if DisplayServer.get_name() == "headless":
@@ -631,7 +649,7 @@ func _game_over() -> void:
 
 func _complete_level() -> void:
 	if current_level_index < LEVEL_DATA_PATHS.size() - 1:
-		score += 750
+		_award_points(750)
 		current_level_index += 1
 		_start_current_level()
 		return
@@ -641,7 +659,7 @@ func _win() -> void:
 	state = GameState.WON
 	_stop_music(game_music_player)
 	player.start_celebration()
-	score += 1500 + stars * 20
+	_award_points(1500 + stars * 20)
 	_finish_score_run("Mål!")
 	_update_hud()
 
