@@ -107,6 +107,7 @@ func _ready() -> void:
 	_load_high_score()
 	_load_level_data()
 	_build_network_requests()
+	_fetch_global_high_scores()
 	_build_music()
 	_show_start_screen()
 
@@ -931,9 +932,9 @@ func _show_name_entry() -> void:
 	panel.add_child(score_label)
 
 	var input := LineEdit.new()
-	input.position = Vector2(90, 108)
-	input.size = Vector2(340, 44)
-	input.max_length = HIGH_SCORE_NAME_MAX_LENGTH
+	input.position = Vector2(70, 108)
+	input.size = Vector2(380, 44)
+	input.max_length = 0
 	input.placeholder_text = "Skriv ditt namn"
 	input.text = "Spelare"
 	input.select_all_on_focus = true
@@ -942,7 +943,22 @@ func _show_name_entry() -> void:
 	panel.add_child(input)
 	name_entry_input = input
 
-	var save_button := _make_dialog_button(Vector2(145, 168), Vector2(230, 44), "SPARA")
+	var character_count := Label.new()
+	character_count.text = str(input.text.length()) + "/" + str(HIGH_SCORE_NAME_MAX_LENGTH)
+	character_count.position = Vector2(70, 150)
+	character_count.size = Vector2(380, 22)
+	character_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	character_count.add_theme_font_size_override("font_size", 16)
+	character_count.add_theme_color_override("font_color", Color8(180, 207, 216))
+	panel.add_child(character_count)
+	input.text_changed.connect(func(new_text: String) -> void:
+		if new_text.length() > HIGH_SCORE_NAME_MAX_LENGTH:
+			input.text = new_text.substr(0, HIGH_SCORE_NAME_MAX_LENGTH)
+			input.caret_column = input.text.length()
+		character_count.text = str(input.text.length()) + "/" + str(HIGH_SCORE_NAME_MAX_LENGTH)
+	)
+
+	var save_button := _make_dialog_button(Vector2(145, 176), Vector2(230, 44), "SPARA")
 	panel.add_child(save_button)
 
 	save_button.pressed.connect(func() -> void:
