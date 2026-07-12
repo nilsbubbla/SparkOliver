@@ -1,0 +1,39 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/player/oliver_player_atlas.png" id="1_player_sheet"]
+[ext_resource type="Script" path="res://scripts/Player.gd" id="2_player_script"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
+size = Vector2(78, 158)
+
+[node name="Player" type="CharacterBody2D"]
+collision_layer = 1
+collision_mask = 2
+script = ExtResource("2_player_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+position = Vector2(0, -107.19)
+scale = Vector2(0.18, 0.18)
+texture = ExtResource("1_player_sheet")
+flip_h = true
+region_enabled = true
+region_rect = Rect2(0, 0, 925, 1191)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -79)
+shape = SubResource("RectangleShape2D_player")
+
+[node name="ShieldGlow" type="Sprite2D" parent="."]
+position = Vector2(0, -107.19)
+scale = Vector2(0.205, 0.205)
+modulate = Color(0.3, 0.95, 0.7, 0.28)
+visible = false
+texture = ExtResource("1_player_sheet")
+flip_h = true
+region_enabled = true
+region_rect = Rect2(0, 0, 925, 1191)
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(380, -235)
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0

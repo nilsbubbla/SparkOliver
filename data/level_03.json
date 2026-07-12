@@ -1,0 +1,26 @@
+{
+  "length": 7600,
+  "random_layout": {
+    "obstacle_count": 14,
+    "obstacle_start_x": 800,
+    "obstacle_min_gap": 430,
+    "obstacle_max_gap": 660,
+    "obstacle_kinds": [0, 1, 2, 3, 4, 5, 7, 8, 9],
+    "powerup_count": 6,
+    "powerup_start_x": 1080,
+    "powerup_min_gap": 750,
+    "powerup_max_gap": 1200,
+    "powerup_kinds": [0, 1, 2, 3, 4],
+    "powerup_heights": [210, 225, 240, 255, 270],
+    "finish_margin": 740
+  },
+  "obstacles": [],
+  "stars": {
+    "count": 40,
+    "start_x": 520,
+    "spacing": 170,
+    "height": 195,
+    "wave": 74
+  },
+  "powerups": []
+}
