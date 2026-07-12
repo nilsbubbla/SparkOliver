@@ -54,7 +54,7 @@ const GLOBAL_SCORE_URL := "https://www.fnirp.com/sparkoliver/api/v1/scores"
 const GLOBAL_HIGH_SCORES_URL := "https://www.fnirp.com/sparkoliver/highscores.json"
 const GLOBAL_HIGH_SCORES_FALLBACK_URL := "https://fnirp.com/sparkoliver/highscores.json"
 
-enum GameState { MENU, RUNNING, PAUSED, WON, GAME_OVER }
+enum GameState { MENU, RUNNING, WON, GAME_OVER }
 
 var player: CharacterBody2D
 var hud: CanvasLayer
@@ -65,6 +65,7 @@ var menu_root: Control
 var menu_frame: Control
 var menu_dialog: Control
 var name_entry_layer: CanvasLayer
+var name_entry_input: LineEdit
 var active_powerups: Dictionary = {}
 var score := 0
 var score_accumulator := 0.0
@@ -116,12 +117,8 @@ func _exit_tree() -> void:
 			audio.stream = null
 
 func _process(delta: float) -> void:
-	if Input.is_action_just_pressed("pause_game") and state == GameState.RUNNING:
-		_set_paused(true)
-	elif Input.is_action_just_pressed("pause_game") and state == GameState.PAUSED:
-		_set_paused(false)
-	if Input.is_action_just_pressed("restart"):
-		get_tree().reload_current_scene()
+	if name_entry_layer != null:
+		return
 	if state in [GameState.GAME_OVER, GameState.WON] and name_entry_layer == null and Input.is_action_just_pressed("jump"):
 		get_tree().reload_current_scene()
 
@@ -659,17 +656,6 @@ func _refresh_player_power_states() -> void:
 	else:
 		player.speed_multiplier = 1.0
 
-func _set_paused(value: bool) -> void:
-	if value:
-		state = GameState.PAUSED
-		get_tree().paused = true
-		hud.process_mode = Node.PROCESS_MODE_ALWAYS
-		hud.show_status("Paus", true)
-	else:
-		get_tree().paused = false
-		state = GameState.RUNNING
-		hud.show_status("", false)
-
 func _game_over() -> void:
 	state = GameState.GAME_OVER
 	_stop_music(game_music_player)
@@ -952,7 +938,9 @@ func _show_name_entry() -> void:
 	input.text = "Spelare"
 	input.select_all_on_focus = true
 	input.add_theme_font_size_override("font_size", 24)
+	input.focus_exited.connect(_restore_name_entry_focus)
 	panel.add_child(input)
+	name_entry_input = input
 
 	var save_button := _make_dialog_button(Vector2(145, 168), Vector2(230, 44), "SPARA")
 	panel.add_child(save_button)
@@ -978,10 +966,17 @@ func _submit_high_score(raw_name: String) -> void:
 		high_score = _top_high_score()
 		_save_high_scores()
 	_submit_global_score(cleaned_name, pending_high_score)
+	name_entry_input = null
 	name_entry_layer.queue_free()
 	name_entry_layer = null
 	pending_high_score = 0
 	_return_to_menu_with_high_scores()
+
+func _restore_name_entry_focus() -> void:
+	await get_tree().process_frame
+	if name_entry_layer == null or not is_instance_valid(name_entry_input):
+		return
+	name_entry_input.grab_focus()
 
 func _build_network_requests() -> void:
 	run_request = HTTPRequest.new()

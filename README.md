@@ -14,10 +14,6 @@ Use a private release keystore for production builds. Keystore credentials are i
 
 ## Controls
 
-- Space / Enter: jump
-- Hold jump briefly: higher jump
-- Down: fast drop
-- R: restart
-- P / Esc: pause
+- Tap the screen to jump.
 
 The five files in `data/` control the level layouts.

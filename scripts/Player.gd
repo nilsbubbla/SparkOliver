@@ -13,7 +13,6 @@ const CELEBRATION_FRAMES: Array[int] = [6, 7]
 @export var base_speed := 330.0
 @export var gravity := 1850.0
 @export var jump_velocity := -720.0
-@export var fast_drop_speed := 2100.0
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var shield_glow: Sprite2D = $ShieldGlow
@@ -64,9 +63,6 @@ func _physics_process(delta: float) -> void:
 			_try_jump()
 		if Input.is_action_just_released("jump") and velocity.y < jump_velocity * 0.45:
 			velocity.y = jump_velocity * 0.45
-		if Input.is_action_pressed("duck") and not is_on_floor():
-			velocity.y = max(velocity.y, fast_drop_speed)
-
 	move_and_slide()
 	_update_sprite(delta)
 
