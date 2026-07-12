@@ -48,10 +48,11 @@ const SAFE_OBSTACLE_MIN_GAP := 430.0
 const SAFE_OBSTACLE_MAX_GAP := 690.0
 const POWERUP_MIN_GAP := 720.0
 const POWERUP_OBSTACLE_MIN_GAP := 170.0
-const GAME_VERSION := "1.3.0"
+const HIGHSCORE_RULESET_VERSION := "1.3.0"
 const GLOBAL_RUN_URL := "https://www.fnirp.com/sparkoliver/api/v1/runs"
 const GLOBAL_SCORE_URL := "https://www.fnirp.com/sparkoliver/api/v1/scores"
 const GLOBAL_HIGH_SCORES_URL := "https://www.fnirp.com/sparkoliver/highscores.json"
+const GLOBAL_HIGH_SCORES_FALLBACK_URL := "https://fnirp.com/sparkoliver/highscores.json"
 
 enum GameState { MENU, RUNNING, PAUSED, WON, GAME_OVER }
 
@@ -71,6 +72,7 @@ var high_score := 0
 var high_scores: Array[Dictionary] = []
 var global_high_scores: Array[Dictionary] = []
 var global_high_scores_loaded := false
+var leaderboard_attempt := 0
 var high_score_labels: Array[Label] = []
 var high_score_source_label: Label
 var pending_high_score := 0
@@ -314,6 +316,7 @@ func _show_high_scores_dialog() -> void:
 	high_score_source_label.add_theme_color_override("font_color", Color8(180, 207, 216))
 	menu_dialog.add_child(high_score_source_label)
 	_render_high_scores()
+	leaderboard_attempt = 0
 	_fetch_global_high_scores()
 
 func _make_menu_dialog(title: String) -> Control:
@@ -983,30 +986,35 @@ func _submit_high_score(raw_name: String) -> void:
 func _build_network_requests() -> void:
 	run_request = HTTPRequest.new()
 	run_request.timeout = 8.0
+	run_request.use_threads = true
 	run_request.request_completed.connect(_on_run_request_completed)
 	add_child(run_request)
 
 	score_request = HTTPRequest.new()
 	score_request.timeout = 8.0
+	score_request.use_threads = true
 	score_request.request_completed.connect(_on_score_request_completed)
 	add_child(score_request)
 
 	leaderboard_request = HTTPRequest.new()
 	leaderboard_request.timeout = 8.0
+	leaderboard_request.use_threads = true
 	leaderboard_request.request_completed.connect(_on_leaderboard_request_completed)
 	add_child(leaderboard_request)
 
 func _begin_global_run() -> void:
 	active_run_id = ""
 	active_run_duration_ms = 0.0
-	if oliver_mode_enabled or run_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+	if oliver_mode_enabled:
 		return
-	run_request.request(
+	var error := run_request.request(
 		GLOBAL_RUN_URL,
 		["Content-Type: application/json", "Accept: application/json"],
 		HTTPClient.METHOD_POST,
 		"{}"
 	)
+	if error != OK:
+		active_run_id = ""
 
 func _on_run_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 201 or oliver_mode_enabled:
@@ -1019,41 +1027,45 @@ func _on_run_request_completed(result: int, response_code: int, _headers: Packed
 func _submit_global_score(player_name: String, submitted_score: int) -> void:
 	if oliver_mode_enabled or active_run_id.is_empty():
 		return
-	if score_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
-		return
 	var payload := JSON.stringify({
 		"run_id": active_run_id,
 		"name": player_name,
 		"score": submitted_score,
 		"duration_ms": int(active_run_duration_ms),
-		"game_version": GAME_VERSION,
+		"game_version": HIGHSCORE_RULESET_VERSION,
 		"oliver_mode": false,
 	})
-	score_request.request(
+	var error := score_request.request(
 		GLOBAL_SCORE_URL,
 		["Content-Type: application/json", "Accept: application/json"],
 		HTTPClient.METHOD_POST,
 		payload
 	)
-	active_run_id = ""
+	if error == OK:
+		active_run_id = ""
 
 func _on_score_request_completed(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
 	if result == HTTPRequest.RESULT_SUCCESS and response_code in [200, 201]:
 		_fetch_global_high_scores()
 
 func _fetch_global_high_scores() -> void:
-	if leaderboard_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
-		return
 	if high_score_source_label != null:
 		high_score_source_label.text = "Hämtar global topplista..."
-	var error := leaderboard_request.request(GLOBAL_HIGH_SCORES_URL, ["Accept: application/json"])
+	var url := GLOBAL_HIGH_SCORES_URL if leaderboard_attempt == 0 else GLOBAL_HIGH_SCORES_FALLBACK_URL
+	var error := leaderboard_request.request(url, ["Accept: application/json"])
 	if error != OK and high_score_source_label != null:
-		high_score_source_label.text = "Lokal topplista"
+		high_score_source_label.text = "Nätverksfel " + str(error)
 
 func _on_leaderboard_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		if leaderboard_attempt == 0:
+			leaderboard_attempt = 1
+			_fetch_global_high_scores.call_deferred()
+			return
 		global_high_scores_loaded = false
 		_render_high_scores()
+		if high_score_source_label != null:
+			high_score_source_label.text = "Serverfel " + str(result) + "/" + str(response_code)
 		return
 	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if typeof(parsed) != TYPE_DICTIONARY:
