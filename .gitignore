@@ -3,5 +3,3 @@
 builds/
 *.tmp
 *.log
-screenshots/sparkoliver_check*.png
-screenshots/*.wav
