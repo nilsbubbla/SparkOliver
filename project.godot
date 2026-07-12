@@ -12,7 +12,7 @@ config_version=5
 
 config/name="SparkOliver"
 config/description="A retro side-scrolling scooter runner."
-config/icon="res://assets/generated/star.png"
+config/icon="res://ikon.png"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7")
 boot_splash/bg_color=Color(0.0470588, 0.0627451, 0.0901961, 1)
