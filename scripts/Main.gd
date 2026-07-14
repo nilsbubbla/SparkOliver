@@ -146,7 +146,12 @@ func _process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if name_entry_layer != null:
 		return
-	if event is InputEventScreenTouch and event.pressed:
+	var primary_pointer_pressed: bool = false
+	if event is InputEventScreenTouch:
+		primary_pointer_pressed = event.pressed
+	elif event is InputEventMouseButton:
+		primary_pointer_pressed = event.button_index == MOUSE_BUTTON_LEFT and event.pressed
+	if primary_pointer_pressed:
 		if state == GameState.RUNNING:
 			player.request_jump()
 		elif state in [GameState.GAME_OVER, GameState.WON] and name_entry_layer == null:
@@ -995,21 +1000,22 @@ func _restore_name_entry_focus() -> void:
 	name_entry_input.grab_focus()
 
 func _build_network_requests() -> void:
+	var threaded_requests := OS.get_name() != "Web"
 	run_request = HTTPRequest.new()
 	run_request.timeout = 8.0
-	run_request.use_threads = true
+	run_request.use_threads = threaded_requests
 	run_request.request_completed.connect(_on_run_request_completed)
 	add_child(run_request)
 
 	score_request = HTTPRequest.new()
 	score_request.timeout = 8.0
-	score_request.use_threads = true
+	score_request.use_threads = threaded_requests
 	score_request.request_completed.connect(_on_score_request_completed)
 	add_child(score_request)
 
 	leaderboard_request = HTTPRequest.new()
 	leaderboard_request.timeout = 8.0
-	leaderboard_request.use_threads = true
+	leaderboard_request.use_threads = threaded_requests
 	leaderboard_request.request_completed.connect(_on_leaderboard_request_completed)
 	add_child(leaderboard_request)
 
