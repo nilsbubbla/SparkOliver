@@ -13,8 +13,8 @@ Install the Android export template and configure the Android SDK in Godot. Expo
 Use a private release keystore for production builds. Keystore credentials are intentionally not stored in the repository.
 
 For the browser version, install the Web export template and export the `Web` preset. The output is
-written to `builds/web/`. Serve the directory over HTTP(S); opening `index.html` directly as a local
-file is not supported by browsers.
+written to `builds/web/`. Copy the generated versioned HTML file to `index.html` when deploying.
+Serve the directory over HTTP(S); opening it directly as a local file is not supported by browsers.
 
 The production build is intended to be served from `https://www.fnirp.com/sparkoliver/play/`. It
 uses the same run, score and global leaderboard endpoints as the Android build. The Web preset uses

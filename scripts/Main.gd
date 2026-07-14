@@ -1025,7 +1025,7 @@ func _begin_global_run() -> void:
 	if oliver_mode_enabled:
 		return
 	var error := run_request.request(
-		GLOBAL_RUN_URL,
+		_service_url("/sparkoliver/api/v1/runs", GLOBAL_RUN_URL),
 		["Content-Type: application/json", "Accept: application/json"],
 		HTTPClient.METHOD_POST,
 		"{}"
@@ -1053,7 +1053,7 @@ func _submit_global_score(player_name: String, submitted_score: int) -> void:
 		"oliver_mode": false,
 	})
 	var error := score_request.request(
-		GLOBAL_SCORE_URL,
+		_service_url("/sparkoliver/api/v1/scores", GLOBAL_SCORE_URL),
 		["Content-Type: application/json", "Accept: application/json"],
 		HTTPClient.METHOD_POST,
 		payload
@@ -1068,7 +1068,9 @@ func _on_score_request_completed(result: int, response_code: int, _headers: Pack
 func _fetch_global_high_scores() -> void:
 	if high_score_source_label != null:
 		high_score_source_label.text = "Hämtar global topplista..."
-	var url := GLOBAL_HIGH_SCORES_URL if leaderboard_attempt == 0 else GLOBAL_HIGH_SCORES_FALLBACK_URL
+	var url := _service_url("/sparkoliver/highscores.json", GLOBAL_HIGH_SCORES_URL)
+	if OS.get_name() != "Web" and leaderboard_attempt > 0:
+		url = GLOBAL_HIGH_SCORES_FALLBACK_URL
 	var error := leaderboard_request.request(url, ["Accept: application/json"])
 	if error != OK and high_score_source_label != null:
 		high_score_source_label.text = "Nätverksfel " + str(error)
@@ -1108,6 +1110,13 @@ func _on_leaderboard_request_completed(result: int, response_code: int, _headers
 			break
 	_render_high_scores()
 	_update_hud()
+
+func _service_url(path: String, fallback: String) -> String:
+	if OS.get_name() == "Web":
+		var origin: Variant = JavaScriptBridge.eval("window.location.origin")
+		if origin != null and not str(origin).is_empty():
+			return str(origin) + path
+	return fallback
 
 func _render_high_scores() -> void:
 	if high_score_labels.is_empty():
